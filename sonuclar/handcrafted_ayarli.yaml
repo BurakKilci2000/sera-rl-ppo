@@ -1,0 +1,22 @@
+aciklama: tune_handcrafted.py çıktısı; seçim validation senaryolarında, ölçüt ödül
+validation_seedleri:
+- 3000
+- 3001
+- 3002
+- 3003
+- 3004
+- 3005
+- 3006
+- 3007
+- 3008
+- 3009
+en_iyi_esikler:
+  T_target: 14.0
+  T_band: 10.0
+  W_target: 0.35
+  W_band: 0.03
+  N_target: 350.0
+val_odul_ort: 127.867
+val_verim_ort: 6.1801
+orijinal_val_odul_ort: 24.053
+orijinal_val_verim_ort: 1.4577

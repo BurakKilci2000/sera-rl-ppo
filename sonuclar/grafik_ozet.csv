@@ -1,0 +1,34 @@
+grafik,metrik,deger
+G1,hand-crafted (ayarlı) seviyesinin ilk aşıldığı episode,2460
+G1,hand-crafted seviyesinin ilk aşıldığı episode,132
+G1,max-out seviyesinin ilk aşıldığı episode,86
+G1,do-nothing seviyesi,eğitimin başından beri üstünde
+G1,son 100 noktanın ortalaması (plato),127.81
+G1,platonun %95'ine ulaşılan episode,1379
+G1,"seedler arası std, son nokta",1.13
+G2,ilk eval adımı,20480
+G2,ilk eval: deterministik ödül,62.94
+G2,ilk eval: eğitim (stokastik) ödül,39.46
+G2,ilk eval: fark (det. − stok.),23.48
+G2,son eval adımı,499712
+G2,son eval: deterministik ödül,130.77
+G2,son eval: eğitim (stokastik) ödül,128.44
+G2,son eval: fark (det. − stok.),2.34
+G3,pg_loss: ilk değer,-0.0155
+G3,pg_loss: son değer,-0.0092
+G3,pg_loss: en yüksek değer,-0.0034
+G3,pg_loss: en yüksek değerin adımı,176128
+G3,v_loss: ilk değer,0.3726
+G3,v_loss: son değer,0.4855
+G3,v_loss: en yüksek değer,0.9916
+G3,v_loss: en yüksek değerin adımı,22528
+G3,entropy: ilk değer,3.6412
+G3,entropy: son değer,-1.4808
+G3,entropy: en yüksek değer,3.6412
+G3,entropy: en yüksek değerin adımı,10240
+G3,clip_frac: ilk değer,0.2589
+G3,clip_frac: son değer,0.2947
+G3,approx_kl: ilk değer,0.0192
+G3,approx_kl: son değer,0.0246
+G3,approx_kl: en yüksek değer,0.0251
+G3,approx_kl: en yüksek değerin adımı,391168

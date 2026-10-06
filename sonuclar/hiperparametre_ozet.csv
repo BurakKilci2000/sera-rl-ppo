@@ -1,0 +1,7 @@
+parametre,deger,n_seed,final_odul_ort,final_odul_std
+lr,0.0001,5,114.06,4.57
+lr,0.0003,5,115.3,2.85
+lr,0.001,5,117.47,4.01
+clip_eps,0.1,5,105.62,4.85
+clip_eps,0.2,5,115.3,2.85
+clip_eps,0.3,5,120.72,5.46
