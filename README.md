@@ -48,7 +48,8 @@ Ayrıntılar: [`rapor/230202111_sera_rapor.pdf`](rapor/230202111_sera_rapor.pdf)
 ├── requirements.txt, seeds.txt, DEGISIKLIK_LISTESI.md
 ├── runs/ppo_seed{0,1,2,3,42}/  # Final checkpoint'ler + episodes/updates/evals CSV
 ├── sonuclar/                 # Final sonuçlar, özet tablolar; loglar/ = tüm ham CSV loglar
-├── grafikler/                # 5 zorunlu grafik, trajektori, sondaj, episode videosu
+├── grafikler/                # 5 zorunlu grafik, trajektori, sondaj
+├── episode_ppo.mp4           # PPO ajanının bir test sezonu (visualize_episode.py)
 └── rapor/                    # LaTeX kaynağı ve PDF
 ```
 
