@@ -1,0 +1,22 @@
+# Kullanılan tüm rastgele tohumlar (kaynak: config.yaml)
+# Rastgelelik: numpy.random.default_rng(seed) ve torch.manual_seed(seed)
+
+# Eğitim (5 seed × 500 000 adım) — experiment.eval_seeds
+0
+1
+2
+3
+42
+
+# Periyodik deterministik değerlendirme (Grafik 2): 3000–3004
+#   evaluation.validation_seed_start, n_validation_episodes
+# Hand-crafted eşik araması (validation): 3000–3009
+#   handcrafted_search.search_seed_start, n_search_seeds
+# Final test (yalnızca son değerlendirme, hiçbir seçimde kullanılmadı): 2000–2019
+#   experiment.test_seeds
+# Duman testi: 1000–1004
+#   experiment.smoke_test_seeds
+# Trajektori ve politika sondajı senaryosu: 2026
+#   experiment.trajectory_seed (gösterilen PPO ajanı: seed 42)
+# Hiperparametre taraması: her yapılandırma için 0, 1, 2, 3, 42
+#   sweep.sweep_seeds

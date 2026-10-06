@@ -1,0 +1,18 @@
+# Sera RL Projesi — Bağımlılıklar (sürüm sabitlemeli)
+# Burak Kılcı (230202111) — BLM446 Pekiştirmeli Öğrenme
+# Python 3.11, NVIDIA RTX 2060 (CUDA 11.8)
+#
+# Kurulum:
+#   pip install -r requirements.txt
+#
+# PyTorch CUDA 11.8 derlemesi için resmi indeks:
+#   pip install torch==2.7.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+
+torch==2.7.1+cu118
+numpy==1.26.4
+gymnasium==0.29.1
+matplotlib==3.8.4
+PyYAML==6.0.1
+
+# tkinter Python ile birlikte gelir (ayrı paket değildir) — dashboard için
+# FFmpeg sistem paketi olarak kurulmalıdır — MP4 üretimi için

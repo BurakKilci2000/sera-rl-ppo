@@ -1,0 +1,234 @@
+# ============================================================
+# config.yaml — Sera RL projesinin TEK sayısal kaynağı
+# Burak Kılcı (230202111) — BLM446 Pekiştirmeli Öğrenme
+#
+# Kodda sabit (hardcoded) sayı tutulmaz; config.py bu dosyayı okur.
+# Not: PyYAML "3e-4" gibi yazımı metin olarak okur, bu yüzden
+#      küçük sayılar ondalık yazılmıştır (0.0003).
+# ============================================================
+
+# ------------------------------------------------------------
+# Ödül fonksiyonu ağırlıkları
+# ------------------------------------------------------------
+# r_t = w_growth_daily * dB
+#       - w_water    * a_irr
+#       - w_energy   * a_heat
+#       - w_fert     * a_fert
+#       - w_stress   * stres(s_t)
+#       - w_humidity * max(0, H_in - 0.85)
+# r_T += w_yield_terminal * final_yield      (episode sonu)
+#
+# Ablation notları:
+#   - w_yield_terminal baskın tutulmalı; aksi hâlde ajan "kaynak
+#     kullanmama" yerel optimumuna takılır (gözlemlendi, düzeltildi).
+#   - w_stress çok büyük olursa ajan büyüme yerine stres
+#     minimizasyonuna odaklanır.
+reward_weights:
+  w_yield_terminal: 5.0
+  w_growth_daily:   0.10
+  w_water:          0.015
+  w_energy:         0.020
+  w_fert:           0.020
+  w_stress:         0.050
+  w_humidity:       0.030
+
+# ------------------------------------------------------------
+# PPO hiperparametreleri
+# ------------------------------------------------------------
+# gamma = 0.99: 120 günlük episode'da 0.99^120 ≈ 0.30; son günün
+#   (hasat) ödülü bugünden bakıldığında hâlâ anlamlı ağırlık taşır.
+# Erken sonlandırma: DVS >= 2.0 (olgunlaşma) veya t >= 120 (sezon sonu).
+#   Bitki ölümü erken sonlandırma olarak eklenmedi; ajan bunu stres
+#   cezası üzerinden öğrenir.
+ppo:
+  total_timesteps: 500000
+  rollout_steps:   2048
+  n_epochs:        10
+  minibatch_size:  64
+  lr:              0.0003
+  gamma:           0.99
+  gae_lambda:      0.95
+  clip_eps:        0.20
+  vf_coef:         0.50
+  ent_coef:        0.0
+  max_grad_norm:   0.50
+  hidden_size:     128
+  seed:            42
+
+# ------------------------------------------------------------
+# Sera ortamı parametreleri (greenhouse_env.py → GreenhouseParams)
+# ------------------------------------------------------------
+# Kodda kalanlar (bilinçli): birim dönüşümleri (×10, /1000, 1e6/86400),
+# Hargreaves formül sabitleri (0.0023, 17.8, 2.45), gözlem uzayı sınırları.
+environment:
+  episode:
+    episode_days: 120              # bir domates sezonu (gün)
+    DVS_maturity: 2.0              # bu gelişme aşamasında hasat → episode biter
+  geometry:
+    floor_area_m2: 1000.0
+    cover_area_m2: 1500.0
+  thermal:
+    cover_transmissivity: 0.65     # kaplamadan geçen güneş oranı
+    U_loss: 6.0                    # W/(m²·K) pasif ısı kaybı
+    U_vent_max: 25.0               # W/(m²·K) tam havalandırma
+    P_heat_max: 200.0              # W/m² maksimum ısıtma gücü
+    thermal_relax: 0.6             # iç sıcaklığın dengeye günlük yaklaşma oranı
+  climate:
+    CO2_ambient: 410.0             # ppm, dış hava CO2
+    CO2_min: 200.0
+    CO2_max: 1500.0
+    CO2_plant_draw_max: 30.0       # ppm/gün, tam yaprak örtüsünde bitki çekimi
+    transp_base: 0.05              # nem kaynağı: taban transpirasyon
+    transp_gain: 0.10              # LAI arttıkça eklenen transpirasyon
+    transp_to_humidity: 0.5        # transpirasyonun iç neme yansıma oranı
+    LAI_saturation: 3.0            # transpirasyon, CO2 çekimi ve Kc bu LAI'de doyar
+  soil:
+    field_capacity: 0.35           # tarla kapasitesi (hacimsel)
+    wilting_point: 0.10            # solma noktası
+    soil_depth_m: 0.30             # kök bölgesi derinliği
+    Kc_base: 0.3                   # bitki katsayısı, fide
+    Kc_slope: 0.5                  # LAI başına Kc artışı
+    Kc_max: 1.2
+    T_range_offset: 5.0            # Hargreaves sıcaklık aralığı yaklaşımı
+    T_range_min: 0.5
+    leach_max_frac: 0.5            # günlük azot yıkanma üst sınırı
+    soil_temp_memory: 0.7          # toprak sıcaklığı: dünkü değerin ağırlığı
+    soil_temp_air_weight: 0.3      # toprak sıcaklığı: iç havanın ağırlığı
+  plant:
+    RUE: 2.5                       # g biyokütle / MJ PAR
+    PAR_fraction: 0.5              # toplam ışınımın fotosentetik aktif kısmı
+    k_extinction: 0.7              # Beer yasası ışık sönümleme katsayısı
+    SLA: 0.025                     # m² yaprak / g
+    leaf_fraction: 0.5
+    LAI_max: 6.0
+    T_min_growth: 10.0             # sıcaklık stresi trapezi (°C)
+    T_opt_low: 18.0
+    T_opt_high: 26.0
+    T_max_growth: 35.0
+    T_base_GDD: 10.0
+    DVS_thermal_demand: 1500.0     # olgunluk için gereken derece-gün
+    N_demand_per_g: 0.025          # g N / g biyokütle
+    N_half_saturation: 30.0        # kg N/ha, azot stresinin Michaelis-Menten sabiti
+    harvest_index: 0.6
+  actions:
+    irrigation_max_mm: 10.0        # mm/gün
+    fertilizer_max_kg_ha: 5.0      # kg N/ha/gün
+  weather:                         # Şanlıurfa benzeri sentetik sezon (Mart → Temmuz)
+    T_out_start: 12.0
+    T_out_rise: 20.0               # 12 → 32 °C
+    I_rad_start: 14.0
+    I_rad_rise: 14.0               # 14 → 28 MJ/m²/gün
+    I_rad_min: 3.0
+    I_rad_max: 35.0
+    H_out_start: 0.55
+    H_out_drop: 0.25               # 0.55 → 0.30
+    H_out_min: 0.10
+    H_out_max: 0.95
+  stochasticity:                   # ortamın stokastik olduğunun parametreleri
+    weather_noise_T: 1.5           # °C, günlük dış sıcaklık gürültüsü
+    weather_noise_I: 2.0           # MJ/m²/gün, radyasyon gürültüsü
+    weather_noise_H: 0.05          # dış nem gürültüsü
+    climate_noise_T: 0.5           # °C, iç sıcaklık geçiş gürültüsü
+    climate_noise_H: 0.03          # iç nem geçiş gürültüsü
+    climate_noise_CO2: 5.0         # ppm, iç CO2 geçiş gürültüsü
+    biological_noise: 0.05         # büyüme oranı varyans katsayısı (~%5)
+  reward_shape:
+    humidity_threshold: 0.85       # bu nemin üstü hastalık riski cezası
+  initial_state:                   # sezon başı: küçük fide
+    init_T_in_offset: 2.0          # iç sıcaklık = dış + 2 °C
+    init_H_in_offset: 0.05
+    init_W_soil: 0.30
+    init_N_soil: 60.0              # kg N/ha
+    init_LAI: 0.05
+    init_B: 2.0                    # g/m²
+
+# ------------------------------------------------------------
+# Periyodik deterministik değerlendirme (Grafik 2: test/eval eğrisi)
+# ------------------------------------------------------------
+# Eğitim sırasında her N güncellemede politika gürültüsüz (a = mu(s))
+# çalıştırılır. Validation seedleri (3000+) final test seedlerinden
+# (2000+) AYRIDIR: test senaryoları eğitim boyunca hiç görülmez.
+evaluation:
+  eval_interval_updates: 10      # 10 güncelleme ≈ 20 480 adım
+  validation_seed_start: 3000
+  n_validation_episodes: 5
+
+# ------------------------------------------------------------
+# Deney ayarları
+# ------------------------------------------------------------
+experiment:
+  eval_seeds: [0, 1, 2, 3, 42]                       # eğitim tohumları
+  test_seeds: [2000, 2001, 2002, 2003, 2004,
+               2005, 2006, 2007, 2008, 2009,
+               2010, 2011, 2012, 2013, 2014,
+               2015, 2016, 2017, 2018, 2019]          # final test senaryoları
+  smoke_test_seeds: [1000, 1001, 1002, 1003, 1004]   # test_env.py duman testi
+  trajectory_seed: 2026                              # trajektori grafiklerinin senaryosu
+  trajectory_ppo_seed: 42                            # trajektoride gösterilen PPO ajanı
+
+# ------------------------------------------------------------
+# Grafiklerdeki baseline referans çizgileri
+# ------------------------------------------------------------
+# Kaynak: test_env.py çıktısı (5 episode, seed 1000–1004).
+# Final değerlendirmedeki (20 senaryo) değerler biraz farklıdır.
+baseline_reference:
+  hand_crafted_reward: 24.34
+  max_out_reward:      10.56
+  do_nothing_reward:   -8.58
+  hand_crafted_yield:  1.47
+
+# ------------------------------------------------------------
+# Hand-crafted baseline kontrolcü (baselines.py)
+# ------------------------------------------------------------
+# Oransal (P) kontrolcü: eylem = min(1, hata / band). Örneğin iç sıcaklık
+# hedefin 5 °C üstündeyse havalandırma tam açık (1.0).
+handcrafted:
+  T_target: 22.0          # °C, iç sıcaklık hedefi
+  T_band: 5.0             # °C, bu kadar hata → tam ısıtma/havalandırma
+  H_vent_threshold: 0.85  # bu nemin üstünde ek havalandırma
+  H_vent_min: 0.4         # nem yüksekken en az bu kadar havalandırma
+  W_target: 0.28          # toprak suyu hedefi
+  W_band: 0.10
+  N_target: 50.0          # kg N/ha, bu azotun altında gübre
+  N_band: 40.0
+
+# ------------------------------------------------------------
+# Ayarlı hand-crafted baseline (tune_handcrafted.py)
+# ------------------------------------------------------------
+# Adil karşılaştırma için kural tabanlı kontrolcünün eşikleri de aranır.
+# Seçim validation senaryolarında yapılır; test senaryoları (2000+) aramada
+# hiç kullanılmaz. Ölçüt PPO'nunkiyle aynıdır: ortalama episode ödülü.
+handcrafted_search:
+  search_seed_start: 3000
+  n_search_seeds: 10
+  grid:
+    T_target: [12.0, 14.0, 16.0, 18.0, 20.0]
+    T_band:   [5.0, 10.0, 15.0, 20.0]
+    W_target: [0.31, 0.33, 0.35]          # 0.35 = tarla kapasitesi (fiziksel üst sınır)
+    W_band:   [0.01, 0.03, 0.10]          # küçük band → daha az kalıcı hata
+    N_target: [150.0, 250.0, 350.0, 450.0, 600.0]
+
+plotting:
+  smoothing_window: 20           # hareketli ortalama penceresi (episode)
+  loss_smoothing_window: 5       # loss eğrileri için (güncelleme)
+  final_window_episodes: 30      # "final" değer = son 30 eğitim episode'unun ortalaması
+
+# ------------------------------------------------------------
+# Politika davranış analizi (policy_analysis.py)
+# ------------------------------------------------------------
+analysis:
+  probe_day: 84                          # sondajın taban durumu: PPO trajektorisinin bu günü
+  probe_T_values: [22.0, 28.0, 32.0]     # °C, denenen iç sıcaklıklar
+  probe_LAI_values: [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0]
+  water_stress_threshold: 0.9            # g_W bu değerin altındaysa "su stresli gün"
+
+# ------------------------------------------------------------
+# Hiperparametre duyarlılık taraması (hyperparameter_sweep.py)
+# ------------------------------------------------------------
+sweep:
+  sweep_steps:     150000
+  sweep_seeds:     [0, 1, 2, 3, 42]
+  lr_values:       [0.0001, 0.0003, 0.001]
+  clip_eps_values: [0.10, 0.20, 0.30]
+  baseline_lr:     0.0003
+  baseline_clip:   0.20

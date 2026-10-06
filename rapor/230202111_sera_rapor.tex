@@ -1,0 +1,455 @@
+% ======================================================================
+% Sera Tarımında Pekiştirmeli Öğrenme: PPO ile Domates Üretimi
+% Burak Kılcı (230202111) — IEEE konferans formatı, Türkçe
+%
+% Overleaf'te derlemek için bu dosyanın yanına şu 7 görseli yükleyin:
+%   grafik1_ogrenme_egrisi.png, grafik2_eval_egrisi.png, grafik3_loss.png,
+%   grafik4_hiperparametre.png, grafik5_baseline.png,
+%   trajektori_karsilastirma.png, politika_sondaji.png
+% Derleyici: pdfLaTeX
+% ======================================================================
+\documentclass[conference,a4paper]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[turkish,shorthands=:!]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+
+\renewcommand{\IEEEkeywordsname}{Anahtar Kelimeler}
+\renewcommand{\abstractname}{Özet}
+\newcommand{\cfg}[1]{\texttt{#1}}
+
+\begin{document}
+
+\title{Sera Tarımında Pekiştirmeli Öğrenme: Şanlıurfa Koşullarında PPO ile Domates Serasının İklim, Sulama ve Gübre Kontrolü ve Ayarlanmış Kural Tabanlı Kontrolcüyle Adil Karşılaştırma}
+
+\author{\IEEEauthorblockN{Burak Kılcı}
+\IEEEauthorblockA{Bilgisayar Mühendisliği Bölümü, Kocaeli Üniversitesi\\
+Öğrenci No: 230202111\\
+BLM446 Pekiştirmeli Öğrenme — Genişletilmiş Analiz, Ekim 2026}}
+
+\maketitle
+
+% ----------------------------------------------------------------------
+\begin{abstract}
+Bu çalışmada, Şanlıurfa benzeri sıcak ve kurak bir iklimde plastik bir domates serasının ısıtma, havalandırma, sulama ve gübre kararlarını her gün birlikte veren bir pekiştirmeli öğrenme (PÖ) ajanı geliştirilmiştir. Gymnasium arayüzüne uyumlu, sıfırdan yazılmış bir sera simülatörü (iklim, toprak--su--azot ve bitki büyüme alt modelleri) ile PyTorch'ta sıfırdan yazılmış bir Proximal Policy Optimization (PPO) ajanı kullanılmıştır. Ajan beş farklı tohumla ($5\times500$\,bin adım) eğitilmiş ve eğitimde hiç görülmemiş 20 hava senaryosunda deterministik olarak test edilmiştir. PPO, $129.18\pm3.57$ ödül ve $6.23\pm0.16$\,t/ha verim elde etmiş; orijinal kural tabanlı kontrolcüye göre verimde $4.30\times$ üstünlük sağlamıştır. Ancak davranış analizi bu farkın büyük kısmının kontrolcünün kötü ayarlanmasından kaynaklandığını göstermiştir. Kontrolcünün eşikleri validation senaryolarında 900 kombinasyonluk bir ızgara aramasıyla adilce ayarlandığında fark $1.02\times$'e inmiştir; buna karşın PPO, eşleştirilmiş karşılaştırmada ortalama $2.83\pm0.31$ ödül farkıyla beş tohumun her biri için 20 senaryonun 20'sinde öndedir. Ödül ayrıştırması, kalan avantajın daha iyi su ve sıcaklık yönetimi ile gübrenin sezona göre zamanlanmasından geldiğini göstermiştir: PPO gübresinin yalnızca \%11'ini sezonun son üçte birinde verirken bu oran ayarlı kuralda \%26'dır. Sonuçlar, PPO'nun doğru çalışma noktasını kural bilgisi olmadan bulduğunu, ancak bu ortamın en iyi politikası sabit eşiklere yakın olduğu için PÖ'nün avantajının sınırlı kaldığını göstermektedir.
+\end{abstract}
+
+\begin{IEEEkeywords}
+pekiştirmeli öğrenme, PPO, sera iklim kontrolü, sulama optimizasyonu, kural tabanlı kontrol, adil karşılaştırma, tekrar üretilebilirlik
+\end{IEEEkeywords}
+
+% ----------------------------------------------------------------------
+\section{Giriş}
+
+Şanlıurfa, Türkiye'nin en sıcak ve kurak tarım bölgelerinden biridir; ilkbahardan yaza geçerken dış sıcaklık hızla yükselir, hava nemi düşer ve bitkinin su talebi artar. Sera içinde bu koşulların yönetimi, birbirine bağlı dört kararın her gün birlikte verilmesini gerektirir: havalandırma iç sıcaklığı düşürür ama nemi ve CO$_2$'yi de değiştirir; sulama su stresini giderir ama fazlası drenajla azotu yıkar; gübre büyümeyi artırır ama sezon sonunda verilirse verime dönüşmeden maliyet olarak kalır. Ticari seralarda bu kararlar çoğunlukla sabit eşikli kurallarla verilir.
+
+Pekiştirmeli öğrenme (PÖ), uzun vadeli bir hedefi optimize eden ardışık karar problemleri için doğal bir çerçevedir~\cite{sutton2018}. Sera problemi bu yapıya uyar: kararların etkisi toprakta ve bitkide birikir, ödülün önemli bir kısmı sezon sonunda gelir ve geçiş dinamiği stokastiktir. Bu çalışmada sürekli eylem uzaylarında yaygın olarak kullanılan PPO~\cite{schulman2017} algoritması kullanılmıştır.
+
+Çalışmanın ilk sürümü (dönem sonu teslimi), PPO'nun kural tabanlı bir kontrolcüye göre $4.3\times$ verim sağladığını raporlamıştı. Bu genişletilmiş analizde aynı sonucun ne kadarının PÖ'den, ne kadarının karşılaştırma yönteminin zayıflığından geldiği ölçülmüştür. Çalışmanın katkıları şunlardır:
+\begin{itemize}
+\item Gymnasium~\cite{towers2024} uyumlu, sıfırdan yazılmış, tüm ayarlanabilir parametreleri tek bir yapılandırma dosyasında toplanmış stokastik bir sera simülatörü.
+\item PyTorch'ta sıfırdan yazılmış bir PPO ajanı; beş tohumla tekrar üretilebilir eğitim ve tüm grafiklerin üretildiği ham CSV logları.
+\item Kural tabanlı kontrolcünün validation senaryolarında adilce ayarlandığı, test senaryolarının hiçbir seçimde kullanılmadığı bir karşılaştırma düzeni ve eşleştirilmiş senaryo analizi.
+\item PPO'nun avantajının kaynağını ödül bileşenlerine ayrıştıran ve politikanın davranışını ölçen bir analiz; ilk sürümdeki doğrulanamayan iki iddianın düzeltilmesi.
+\end{itemize}
+
+% ----------------------------------------------------------------------
+\section{Temeller ve İlgili Çalışmalar}
+
+\subsection{Markov Karar Süreci}
+Problem, $\mathcal{M}=\langle\mathcal{S},\mathcal{A},P,r,\gamma\rangle$ beşlisiyle tanımlanan bir Markov karar süreci (MDP) olarak ele alınmıştır. Amaç, beklenen indirimli toplam ödülü en büyükleyen politikayı bulmaktır:
+\begin{equation}
+\pi^{*}=\arg\max_{\pi}\;\mathbb{E}_{\pi}\Big[\sum_{t=0}^{T}\gamma^{t}\,r(s_t,a_t)\Big].
+\end{equation}
+Bu çalışmada $\gamma=0.99$ seçilmiştir; 120 günlük bir sezonda $0.99^{120}\approx0.30$ olduğundan sezon sonundaki hasat ödülü ilk günden bakıldığında hâlâ anlamlı bir ağırlık taşır.
+
+\subsection{Proximal Policy Optimization}
+PPO~\cite{schulman2017}, politika gradyanı yöntemlerinin büyük güncellemelerden kaynaklanan kararsızlığını kırpılmış vekil amaç fonksiyonuyla sınırlar:
+\begin{equation}
+L^{\mathrm{CLIP}}(\theta)=\hat{\mathbb{E}}_t\big[\min\big(\rho_t\hat{A}_t,\ \mathrm{clip}(\rho_t,1-\epsilon,1+\epsilon)\hat{A}_t\big)\big],
+\end{equation}
+burada $\rho_t=\pi_\theta(a_t|s_t)/\pi_{\theta_{\mathrm{old}}}(a_t|s_t)$ olasılık oranı, $\hat{A}_t$ ise genelleştirilmiş avantaj kestirimi (GAE)~\cite{schulman2016} ile hesaplanan avantajdır. Toplam kayıp $L=L^{\mathrm{CLIP}}-c_1L^{\mathrm{VF}}+c_2\mathcal{H}[\pi_\theta]$ biçimindedir. Sürekli eylemler için politika köşegen bir Gauss dağılımıdır: $\pi_\theta(a|s)=\mathcal{N}(\mu_\theta(s),\sigma^2 I)$. PPO on-policy bir yöntemdir: her güncellemede yalnızca güncel politikayla toplanan veri kullanılır ve sonra atılır.
+
+\subsection{İlgili Çalışmalar}
+Model tabanlı sera iklim ve domates verim modellemesinde Vanthoor ve arkadaşlarının çalışmaları standart referanslardır~\cite{vanthoor2011a,vanthoor2011b}; bu çalışmadaki iklim ve bitki alt modelleri bu yaklaşımdan esinlenen, sadeleştirilmiş modellerdir. Kuijpers ve arkadaşları~\cite{kuijpers2021} otomatik sera kontrolünde meyve gelişim modellemesi ve performans analizi sunmuştur. Bitki büyümesi için ışık kullanım verimliliği yaklaşımı~\cite{monteith1977}, evapotranspirasyon için Hargreaves yöntemi~\cite{hargreaves1985} kullanılmıştır. PÖ deneylerinde tohum varyansının raporlanması gerektiği Henderson ve arkadaşları tarafından vurgulanmıştır~\cite{henderson2018}. Oransal (P) kontrolcülerin kalıcı hata üretmesi ve bunun integral terimle giderilmesi klasik kontrol teorisinin bilinen bir sonucudur~\cite{astrom2006}; bu sonuç, Bölüm~\ref{sec:adil}'deki bulguların yorumunda önemlidir.
+
+% ----------------------------------------------------------------------
+\section{Sera Simülasyon Ortamı}
+\label{sec:ortam}
+Ortam günlük adımla çalışır ve üç alt modelden oluşur. Tüm ayarlanabilir parametreler (69 ortam parametresi, ödül ağırlıkları ve hiperparametreler) \cfg{config.yaml} dosyasındadır; kodda yalnızca birim dönüşümleri, Hargreaves formülünün kendi sabitleri ve gözlem uzayı sınırları bulunur. Parametreler koda gömülü hâlden yapılandırma dosyasına taşınırken ortam, taşıma öncesi sürümle 24 episode ve 2\,568 adım boyunca bit düzeyinde karşılaştırılmış ve birebir aynı bulunmuştur.
+
+\subsection{İklim Alt Modeli}
+İç sıcaklık, enerji dengesinden hesaplanan bir denge sıcaklığına termal kütle nedeniyle kademeli olarak yaklaşır:
+\begin{align}
+T_{\mathrm{eq}} &= T_{\text{dış}}+\frac{\tau I_W + a_{\text{ıs}}P_{\max}}{U_{\text{kayıp}}+a_{\mathrm{hav}}U_{\mathrm{hav}}},\\
+T_{\text{iç}}^{t+1} &= T_{\text{iç}}^{t}+\alpha\,(T_{\mathrm{eq}}-T_{\text{iç}}^{t})+\varepsilon_T,
+\end{align}
+burada $I_W$ günlük ışınımın W/m$^2$ karşılığı, $\tau=0.65$ örtü geçirgenliği, $P_{\max}=200$\,W/m$^2$, $U_{\text{kayıp}}=6$ ve $U_{\mathrm{hav}}=25$\,W/(m$^2$K), $\alpha=0.6$ ve $\varepsilon_T\sim\mathcal{N}(0,0.5^2)$'dir. İç nem bitki terlemesiyle artar ve havalandırmayla dış neme çekilir; iç CO$_2$ yaprak alanıyla orantılı olarak tüketilir ve havalandırmayla 410\,ppm'e çekilir.
+
+\subsection{Toprak--Su--Azot Alt Modeli}
+Kök bölgesi (30\,cm) bir kova modeliyle temsil edilir. Referans evapotranspirasyon Hargreaves yaklaşımıyla hesaplanır~\cite{hargreaves1985}:
+\begin{equation}
+ET_0=0.0023\,(T_{\text{iç}}+17.8)\sqrt{\Delta T}\,\frac{I_{\mathrm{rad}}}{2.45},
+\end{equation}
+ve bitki katsayısı $K_c=\min(1.2,\,0.3+0.5\min(\mathrm{LAI},3))$ ile ölçeklenir. Toprak suyu sulamayla artar, evapotranspirasyonla azalır; tarla kapasitesini ($0.35$) aşan su drenajla kaybolur. Azot gübreyle artar, bitki alımıyla (önceki günkü büyümeyle orantılı) ve drenajla yıkanmayla azalır.
+
+\subsection{Bitki Büyüme Alt Modeli}
+Günlük biyokütle artışı, ışık kullanım verimliliği yaklaşımıyla~\cite{monteith1977} hesaplanır:
+\begin{equation}
+\Delta B=\mathrm{RUE}\cdot0.5\,I_{\mathrm{rad}}\big(1-e^{-k\,\mathrm{LAI}}\big)\,f_T\,g_W\,h_N\,(1+\varepsilon_B),
+\end{equation}
+burada $\mathrm{RUE}=2.5$\,g/MJ, $k=0.7$'dir. Sıcaklık stresi $f_T$ yamuk biçimlidir: $18$--$26\,^{\circ}$C aralığında 1, $10\,^{\circ}$C'nin altında ve $35\,^{\circ}$C'nin üstünde 0'dır. Su stresi $g_W=(W-W_{\mathrm{WP}})/(W_{\mathrm{FC}}-W_{\mathrm{WP}})$ doğrusal, azot stresi $h_N=N/(N+30)$ Michaelis--Menten biçimlidir. Gelişme aşaması (DVS) derece-gün toplamıyla ilerler; DVS $\geq2$ olduğunda bitki hasat olgunluğuna ulaşır. Verim, biyokütle ve hasat indeksinden ($0.6$) hesaplanır.
+
+\subsection{Stokastiklik}
+Ortamın stokastikliği yalnızca başlangıç koşulunda değil, geçiş fonksiyonunun kendisindedir. Tablo~\ref{tab:stok} yedi gürültü kaynağını ve kodda nerede uygulandıklarını gösterir. Bu parametreler sıfırlandığında aynı tohum ve aynı eylem dizisi farklı sonuç verir. Tüm rastgelelik \cfg{numpy.random.default\_rng} ve \cfg{torch.manual\_seed} ile üretilir.
+
+\begin{table}[!t]
+\caption{Stokastiklik kaynakları (\cfg{config.yaml} $\rightarrow$ \cfg{environment.stochasticity})}
+\label{tab:stok}
+\centering
+\footnotesize
+\begin{tabular}{@{}llr@{}}
+\toprule
+Parametre & Uygulandığı yer & Değer\\
+\midrule
+\cfg{weather\_noise\_T} & Sezonluk hava üretici & $1.5\,^{\circ}$C\\
+\cfg{weather\_noise\_I} & Sezonluk hava üretici & $2.0$\,MJ/m$^2$\\
+\cfg{weather\_noise\_H} & Sezonluk hava üretici & $0.05$\\
+\cfg{climate\_noise\_T} & \cfg{\_climate\_step()} & $0.5\,^{\circ}$C\\
+\cfg{climate\_noise\_H} & \cfg{\_climate\_step()} & $0.03$\\
+\cfg{climate\_noise\_CO2} & \cfg{\_climate\_step()} & $5$\,ppm\\
+\cfg{biological\_noise} & \cfg{\_plant\_step()} & $0.05$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ----------------------------------------------------------------------
+\section{MDP Formülasyonu}
+\label{sec:mdp}
+
+\textbf{Durum} ($s_t\in\mathbb{R}^{13}$): iç sıcaklık, iç nem, CO$_2$, toprak suyu, toprak azotu, toprak sıcaklığı, yaprak alan indeksi (LAI), biyokütle, gelişme aşaması, dış sıcaklık, dış nem, ışınım ve normalize gün. Durum Markov özelliğini sağlar: biyokütle, toprak suyu, azot ve DVS geçmiş kararların etkisini kendi içinde biriktirir; ayrıca geçmiş kayıt tutmaya gerek yoktur. Ortam tam gözlemlenebilirdir; ajan durumun tamamını görür.
+
+\textbf{Eylem} ($a_t\in[-1,1]^4$, sürekli): ısıtma (0--200\,W/m$^2$), havalandırma (\%0--100), sulama (0--10\,mm/gün) ve gübre (0--5\,kg\,N/ha/gün). Ağ çıktısı ortam içinde $[0,1]$ aralığındaki fiziksel oranlara çevrilir.
+
+\textbf{Ödül}: Günlük ödül büyümeyi ödüllendirir, kaynak kullanımını ve stresi cezalandırır; sezonun son gününde verime bağlı bir hasat bonusu eklenir:
+\begin{multline}
+r_t = w_y\Delta B_t - w_w a^{\mathrm{sul}}_t - w_e a^{\text{ıs}}_t - w_f a^{\text{güb}}_t\\
+ - w_s\,(3-f_T-g_W-h_N) - w_h\max(0,H_{\text{iç}}-0.85),
+\end{multline}
+\begin{equation}
+r_T \mathrel{+}= w_Y\cdot\mathrm{verim}\ (\mathrm{t/ha}).
+\end{equation}
+Ağırlıklar ve koddaki karşılıkları Tablo~\ref{tab:odul}'de verilmiştir. Hasat bonusunun baskın tutulması bir ön deneyin sonucudur: bu ağırlık küçük tutulduğunda ajan kaynak maliyetinden kaçınmak için hiçbir şey yapmama yerel optimumuna takılmıştır.
+
+\textbf{Sonlanma}: Episode 120 günde ya da DVS $\geq2$ olduğunda biter. Bitki ölümü ayrı bir sonlandırma koşulu olarak eklenmemiştir; ajan bu durumu stres cezası yoluyla öğrenir.
+
+\begin{table}[!t]
+\caption{Ödül terimleri ve \cfg{greenhouse\_env.py} içindeki satırları}
+\label{tab:odul}
+\centering
+\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Terim & Ağırlık & Değer & Satır\\
+\midrule
+Büyüme ödülü & $w_y$ & $0.10$ & 451\\
+Sulama maliyeti & $w_w$ & $0.015$ & 452\\
+Enerji maliyeti & $w_e$ & $0.020$ & 453\\
+Gübre maliyeti & $w_f$ & $0.020$ & 454\\
+Stres cezası & $w_s$ & $0.05$ & 456\\
+Nem cezası & $w_h$ & $0.03$ & 458\\
+Günlük toplam & -- & -- & 460\\
+Hasat bonusu & $w_Y$ & $5.0$ & 468\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ----------------------------------------------------------------------
+\section{Neden Pekiştirmeli Öğrenme?}
+\label{sec:nedenrl}
+Problemin PÖ gerektirip gerektirmediği dört soruyla değerlendirilmiştir.
+
+\textit{Eylem gelecekteki durumu etkiliyor mu?} Evet. Sulama ve gübre toprakta birikir ve sonraki günlerin su ve azot durumunu belirler; havalandırma iç iklimi bir sonraki güne taşır.
+
+\textit{Ödül gecikmeli mi?} Kısmen. PPO'nun toplam ödülünün yaklaşık \%24'ü ($31.13/129.18$) sezon sonundaki hasat bonusundan gelir; gübrenin verime etkisi haftalar sonra görülür.
+
+\textit{Durum--eylem uzayı büyük mü?} Evet. 13 sürekli durum değişkeni, 4 sürekli eylem ve stokastik bir geçiş fonksiyonu tablo tabanlı yöntemleri ve dinamik programlamayı pratik olmaktan çıkarır.
+
+\textit{Basit bir kural aynı sonucu daha ucuza verir mi?} Bu soru deneysel olarak ölçülmüştür (Bölüm~\ref{sec:adil}) ve cevap \emph{büyük ölçüde evet}tir: validation senaryolarında ayarlanmış bir oransal kontrolcü, test senaryolarında PPO'nun performansının yaklaşık \%98'ine ulaşmaktadır. Dolayısıyla bu problem PÖ ile çözülebilmekte, ancak PÖ'yü zorunlu kılmamaktadır. PPO'nun ayırt edici katkısı, çalışma noktasını kural yapısı bilgisi olmadan bulması ve gübreyi sezona göre zamanlamasıdır.
+
+% ----------------------------------------------------------------------
+\section{Yöntem ve Deney Düzeni}
+\label{sec:yontem}
+
+\subsection{PPO Ajanı}
+Aktör ve kritik ayrı tam bağlantılı ağlardır (13\,$\rightarrow$\,128\,$\rightarrow$\,128, Tanh); aktör eylem ortalamasını, kritik durum değerini üretir. Standart sapma, durumdan bağımsız öğrenilen bir $\log\sigma$ parametresidir. Gözlemler Welford algoritmasıyla hesaplanan koşan ortalama ve varyansla normalize edilir. Hiperparametreler Tablo~\ref{tab:hp}'de verilmiştir. Entropi katsayısı sıfır seçilmiştir; ortam zaten stokastik olduğu için ek bir keşif teşviki kullanılmamıştır. Bu seçimin etkisi Bölüm~\ref{sec:g3}'te tartışılmıştır.
+
+\begin{table}[!t]
+\caption{PPO hiperparametreleri}
+\label{tab:hp}
+\centering
+\footnotesize
+\begin{tabular}{@{}lr@{\hspace{6mm}}lr@{}}
+\toprule
+Parametre & Değer & Parametre & Değer\\
+\midrule
+Toplam adım & 500\,000 & $\gamma$ & 0.99\\
+Rollout & 2048 & $\lambda$ (GAE) & 0.95\\
+Epoch & 10 & $\epsilon$ (clip) & 0.20\\
+Minibatch & 64 & $c_1$ / $c_2$ & 0.5 / 0.0\\
+Öğrenme oranı & $3\times10^{-4}$ & Gradyan normu & 0.5\\
+Gizli katman & $128\times2$ & Optimizatör & Adam\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Senaryo Ayrımı ve Tekrar Üretilebilirlik}
+Ajan beş tohumla ($0,1,2,3,42$) aynı kod sürümüyle eğitilmiştir. Hava senaryoları amaçlarına göre ayrılmıştır (Tablo~\ref{tab:seed}). Test senaryoları ne eğitimde ne de kural tabanlı kontrolcünün ayarlanmasında kullanılmış, yalnızca son değerlendirmede bir kez kullanılmıştır. Eğitim sırasında üç ham log yazılmıştır: episode getirileri, her güncellemenin kayıp değerleri ve her 10 güncellemede yapılan deterministik değerlendirme. Raporlanan tüm grafikler ve tablolar yalnızca bu loglardan üretilmiştir. Çalışmanın ilk sürümündeki beş eğitimin iki farklı tarihte yapıldığı fark edildiğinden beşi de aynı kodla yeniden koşulmuş; yeni sonuçlar (PPO test ödülü $129.18$) eskileriyle ($129.41$) virgülden sonra ikinci basamakta örtüşmüştür.
+
+\begin{table}[!t]
+\caption{Hava senaryolarının kullanımı}
+\label{tab:seed}
+\centering
+\footnotesize
+\begin{tabular}{@{}lll@{}}
+\toprule
+Amaç & Seedler & Kullanım\\
+\midrule
+Eğitim & 0, 1, 2, 3, 42 & $5\times500$\,bin adım\\
+Eval eğrisi & 3000--3004 & Her 10 güncellemede test\\
+Kural ayarı & 3000--3009 & 900 kombinasyondan seçim\\
+Final test & 2000--2019 & Yalnızca son değerlendirme\\
+Duman testi & 1000--1004 & Ortam kontrolü\\
+Davranış analizi & 2026 & Trajektori ve sondaj\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Karşılaştırma Yöntemleri}
+Dört temel politika kullanılmıştır: \emph{hiçbir şey yapmama} (tüm eylemler en düşük), \emph{her şeyi açma} (tüm eylemler en yüksek), \emph{orijinal kural} ve \emph{ayarlı kural}. Kural tabanlı kontrolcü, her eylemi kendi eşiğine göre oransal olarak ayarlar: iç sıcaklık hedefin üstündeyse havalandırır, altındaysa ısıtır; toprak suyu hedefin altındaysa sular; azot hedefin altındaysa gübreler. Orijinal kuralın eşikleri ($T=22\,^{\circ}$C, $W=0.28$, $N=50$\,kg/ha) elle seçilmiştir. Ayarlı kuralda beş eşik (sıcaklık hedefi ve bandı, toprak suyu hedefi ve bandı, azot hedefi) üzerinde 900 kombinasyonluk bir ızgara araması yapılmış, seçim 10 validation senaryosunda ortalama ödüle göre yapılmıştır; bu ölçüt PPO'nun optimize ettiği amaçla aynıdır. Izgaranın sınırına düşen eşiklerde arama alanı genişletilmiş, tüm eşikler ızgaranın içinde ya da fiziksel sınırda (toprak suyu = tarla kapasitesi) kalana kadar arama tekrarlanmıştır. Seçilen eşikler: $T=14\,^{\circ}$C, bant $10\,^{\circ}$C, $W=0.35$, $W$ bandı $0.03$, $N=350$\,kg/ha.
+
+% ----------------------------------------------------------------------
+\section{Sonuçlar}
+\label{sec:sonuc}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{grafik1_ogrenme_egrisi.png}
+\caption{Grafik 1 — Öğrenme eğrisi. Sol: episode getirisi (120 günün toplam ödülü), sağ: hasat verimi. İnce çizgiler tek tek tohumları, kalın siyah çizgi beş tohumun ortalamasını, gri bant ortalama $\pm$ standart sapmayı gösterir; hareketli ortalama penceresi 20 episode'dur. Kesikli çizgiler temel politikaların test ortalamalarıdır.}
+\label{fig:g1}
+\end{figure*}
+
+\subsection{Öğrenme Eğrisi}
+Şekil~\ref{fig:g1}'de beş tohumun ortalama eğitim getirisi 86. episode'da her şeyi açma politikasını, 132. episode'da orijinal kuralı aşmakta ve son 100 noktada $127.81$'lik bir platoya oturmaktadır. Tohum eğrileri neredeyse üst üstedir; platonun \%95'ine 1\,379. episode'da (yaklaşık 165 bin adım) ulaşılmakta ve son noktada tohumlar arası standart sapma yalnızca $1.13$ olmaktadır. Hasat bonusunun baskın olduğu yoğun ödül her episode'da güçlü bir öğrenme sinyali sağlamakta, GAE avantaj kestiriminin varyansını düşürmekte, kırpma mekanizması da politika adımlarını küçük tuttuğu için ani bir çöküş görülmemektedir. Sonuç olarak PPO bu ortamda tohumdan bağımsız ve kararlı öğrenmekte; yaklaşık 1\,400 episode'dan sonra ek eğitimin getirisi küçük kalmaktadır.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{grafik2_eval_egrisi.png}
+\caption{Grafik 2 — Test (eval) eğrisi. Mavi: her 10 güncellemede gürültüsüz politikanın ($a=\mu_\theta(s)$) 5 validation senaryosundaki ortalaması, 5 tohum ortalama $\pm$ std. Kesikli gri: aynı adımlardaki eğitim getirisi (stokastik politika, hareketli ortalama 20).}
+\label{fig:g2}
+\end{figure*}
+
+\subsection{Deterministik Test Eğrisi}
+Şekil~\ref{fig:g2}'de deterministik politika her ölçümde eğitim eğrisinin üstündedir; aradaki fark ilk ölçümde (20\,480 adım) $23.48$ puan iken son ölçümde (499\,712 adım) $2.34$ puana inmektedir. Son ölçümde validation getirisi $130.77$, eğitim getirisi $128.44$'tür; eğitimde hiç görülmemiş 20 test senaryosunda tohum ortalamaları $129.18\pm0.68$'dir. Fark keşif gürültüsünden kaynaklanır: eğitimde eylem Gauss dağılımından örneklenir ve başta yaklaşık $\sigma\approx0.60$ olan gürültü kötü eylemlere yol açar; entropiden hesaplanan $\sigma$ eğitim sonunda yaklaşık $0.17$'ye indikçe stokastik politika ortalamasına yaklaşır. Eğitim eğrisi tek başına gerçek performansı olduğundan düşük gösterir; validation ve test sonuçlarının aynı seviyede olması ajanın senaryoları ezberlemediğini gösterir.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.84\textwidth]{grafik3_loss.png}
+\caption{Grafik 3 — PPO eğitim kayıpları: kırpılmış vekil (policy) kayıp, değer fonksiyonu kaybı, politika entropisi ve yaklaşık KL ıraksaması ile kırpılan örnek oranı (sağ eksen). 5 tohum ortalama $\pm$ std, hareketli ortalama 5 güncelleme.}
+\label{fig:g3}
+\end{figure*}
+
+\subsection{Kayıp Eğrileri}
+\label{sec:g3}
+Şekil~\ref{fig:g3}'te entropi $3.64$'ten $-1.48$'e kesintisiz düşerken yaklaşık KL $0.019$'dan $0.025$'e, kırpılan örnek oranı $0.26$'dan $0.29$'a çıkmaktadır; değer kaybı 22\,528. adımda $0.99$ ile tepe yapıp $0.4$--$0.5$ bandına inmektedir. Beş tohumun eğrileri birbirine çok yakındır; tek belirgin sapma yaklaşık 391 bin adımda 3 numaralı tohumun KL ve değer kaybındaki kısa sıçramadır ve Şekil~\ref{fig:g1}'deki küçük getiri düşüşünden hemen sonra toparlanmaktadır. Entropi katsayısı sıfır olduğundan $\sigma$'nın küçülmesini frenleyen bir terim yoktur; $\sigma$ küçüldükçe ortalamadaki aynı büyüklükteki bir kayma olasılık oranını daha çok değiştirdiği için KL ve kırpma oranı yükselir. Bu bir ıraksama değil, keşfin azaldığı bir yakınsamadır; daha uzun eğitimlerde $\sigma$'nın çökmesini önlemek için pozitif bir entropi katsayısı ya da $\log\sigma$ için bir alt sınır denenebilir.
+
+PPO'nun policy kaybı, denetimli öğrenmedeki kayıp gibi okunmamalıdır. Avantajlar her güncellemede normalize edildiği için kayıp hep sıfıra yakın kalır; $-0.016$ ile $-0.003$ arasında değişmesi yakınsamayı değil, her güncellemenin vekil amacı ne kadar iyileştirebildiğini gösterir. Değer kaybındaki erken tepe, politikanın hızla iyileştiği döneme denk gelir: ilk 20 bin adımda getiri yaklaşık $-3$'ten $60$'ın üzerine çıkarken kritiğin tahmin etmesi gereken hedef değerler kritiğin takip hızından daha hızlı kayar. Getiriler platoya oturunca kayıp da sabitlenir; sıfıra inmemesinin nedeni ortamın stokastik olması ve aynı durumdan farklı getirilerin gelebilmesidir. Bu nedenle öğrenmenin asıl kanıtı Şekil~\ref{fig:g1} ve Şekil~\ref{fig:g2}'deki getiridir; kayıp eğrileri eğitimin sağlıklı ilerlediğini ve keşfin nasıl azaldığını gösteren teşhis araçlarıdır. Negatif entropi de bir hata değildir: sürekli dağılımlarda diferansiyel entropi, $\sigma$ yeterince küçüldüğünde sıfırın altına iner.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{grafik4_hiperparametre.png}
+\caption{Grafik 4 — Hiperparametre duyarlılığı: (a) öğrenme oranı (clip $=0.2$), (b) PPO kırpma yarıçapı (lr $=0.0003$). Her yapılandırma 5 tohumla 150 bin adım; ortalama $\pm$ std, hareketli ortalama 20 episode.}
+\label{fig:g4}
+\end{figure*}
+
+\subsection{Hiperparametre Duyarlılığı}
+Şekil~\ref{fig:g4}'te, 150 bin adımlık bütçede son 30 episode ortalaması öğrenme oranı $0.0001/0.0003/0.001$ için sırasıyla $114.06\pm4.57$, $115.30\pm2.85$ ve $117.47\pm4.01$; kırpma yarıçapı $0.1/0.2/0.3$ için $105.62\pm4.85$, $115.30\pm2.85$ ve $120.72\pm5.46$'dır. Öğrenme oranındaki on katlık değişim final getiriyi yalnızca yaklaşık 3 puan değiştirmekte ve standart sapma bantları örtüşmektedir; kırpma yarıçapında ise 0.1 ile 0.3 arasında eğitim boyunca açık kalan yaklaşık 15 puanlık bir fark vardır. Bir güncellemede politikanın ne kadar değişebileceğini asıl sınırlayan kırpma yarıçapıdır: olasılık oranı $[1-\epsilon,1+\epsilon]$ dışına çıkan örneklerin gradyanı sıfırlandığından yüksek öğrenme oranı politikayı bu sınıra yalnızca daha çabuk getirir. Bu nedenle küçük $\epsilon$ temkinli ve yavaş bir sömürüye, büyük $\epsilon$ hızlı ilerlemeye ama tohumlar arası en yüksek dağılıma yol açar. PPO bu ortamda öğrenme oranına karşı sağlam, kırpma yarıçapına karşı duyarlıdır; 150 bin adım henüz yakınsamamış bir ara nokta olduğu için \emph{0.3 en iyisidir} değil, \emph{0.3 bu bütçede daha hızlıdır} denebilir ve varsayılan 0.2 hız ile kararlılık arasında dengeli bir seçimdir.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{grafik5_baseline.png}
+\caption{Grafik 5 — Eğitimde görülmemiş 20 test senaryosunda deterministik politikaların karşılaştırması. Kutular çeyrekleri, beyaz elmas ortalamayı gösterir. Sol: episode getirisi, sağ: hasat verimi.}
+\label{fig:g5}
+\end{figure*}
+
+\begin{table}[!t]
+\caption{Final test sonuçları (20 senaryo, deterministik)}
+\label{tab:final}
+\centering
+\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Politika & Ödül & Verim (t/ha) & Oran$^{\dagger}$\\
+\midrule
+Hiçbir şey yapmama & $-8.57\pm0.10$ & $0.02\pm0.00$ & $0.01\times$\\
+Her şeyi açma & $10.88\pm2.35$ & $1.07\pm0.11$ & $0.74\times$\\
+Orijinal kural & $23.81\pm1.41$ & $1.45\pm0.06$ & $1.00\times$\\
+Ayarlı kural & $126.35\pm3.31$ & $6.11\pm0.15$ & $4.21\times$\\
+\midrule
+PPO, seed 0 & $129.73\pm3.52$ & $6.26\pm0.16$ & $4.32\times$\\
+PPO, seed 1 & $130.07\pm3.46$ & $6.27\pm0.16$ & $4.32\times$\\
+PPO, seed 2 & $129.16\pm3.49$ & $6.22\pm0.16$ & $4.29\times$\\
+PPO, seed 3 & $128.14\pm3.57$ & $6.18\pm0.16$ & $4.26\times$\\
+PPO, seed 42 & $128.78\pm3.50$ & $6.20\pm0.16$ & $4.28\times$\\
+\midrule
+\textbf{PPO, 5 seed} & $\mathbf{129.18\pm3.57}$ & $\mathbf{6.23\pm0.16}$ & $\mathbf{4.30\times}$\\
+\bottomrule
+\multicolumn{4}{@{}l}{\scriptsize $^{\dagger}$Verimin orijinal kurala oranı.}
+\end{tabular}
+\end{table}
+
+\subsection{Temel Politikalarla Karşılaştırma}
+Şekil~\ref{fig:g5} ve Tablo~\ref{tab:final}'de PPO, 20 test senaryosunda $129.18\pm3.57$ ödül ve $6.23\pm0.16$\,t/ha verim almaktadır; ayarlı kural $126.35$ ödül ve $6.11$\,t/ha, orijinal kural $23.81$ ödül ve $1.45$\,t/ha, her şeyi açma politikası ise $10.88$ ödül ve $1.07$\,t/ha elde etmektedir. PPO orijinal kurala göre verimde $4.30\times$, ayarlı kurala göre $1.02\times$ üstündür; tohumların senaryo ortalamaları $128.14$ ile $130.07$ arasında, tohumlar arası standart sapma $0.68$'dir. Orijinal kural toprağı sezon boyunca su stresinde tuttuğu için çok geride kalmakta, eşikleri ayarlandığında fark büyük ölçüde kapanmaktadır. Kazanç tutarlı ancak küçüktür; bu ortamın en iyi politikası sabit eşiklere yakın olduğu için PÖ'nün avantajı sınırlıdır. Bu bulgu bir sonraki bölümde ayrıntılı olarak incelenmiştir.
+
+% ----------------------------------------------------------------------
+\section{Adil Karşılaştırma ve Davranış Analizi}
+\label{sec:adil}
+
+\subsection{Orijinal Kural Neden Bu Kadar Geride?}
+Tablo~\ref{tab:davranis}, üç politikanın 20 test senaryosundaki davranışını özetlemektedir. Orijinal kural toprak suyunu $0.28$ hedefinde tutmaktadır; su stresi faktörü bu noktada $g_W=(0.28-0.10)/0.25=0.72$'dir, yani bitki sezonun 120 gününün 120'sinde büyümesinin yaklaşık \%28'ini kaybetmektedir. Ayrıca azot hedefi ($50$\,kg/ha) düşüktür ($h_N=0.62$) ve sıcaklık 120 günün yalnızca 36'sında optimum aralıktadır. İlk sürümdeki $4.30\times$'lik üstünlüğün büyük kısmı bu kötü ayardan kaynaklanmaktadır.
+
+\begin{table}[!t]
+\caption{Politika davranışı (20 test senaryosu ortalaması; PPO için 5 seed ortalaması)}
+\label{tab:davranis}
+\centering
+\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Ölçüt & Orijinal & Ayarlı & PPO\\
+\midrule
+Verim (t/ha) & 1.45 & 6.11 & 6.23\\
+Su stresli gün ($g_W<0.9$) & 120 & 0 & 1.5\\
+Ort. toprak suyu & 0.264 & 0.340 & 0.347\\
+Sıcaklık optimumda (gün) & 36.1 & 52.2 & 54.1\\
+Toplam sulama (mm) & 202 & 377 & 428\\
+Toplam drenaj (mm) & 0.0 & 0.1 & 31.7\\
+Toplam gübre (kg\,N/ha) & 49 & 541 & 411\\
+Son üçte birdeki gübre payı & \%43 & \%26 & \%11\\
+Ort. azot faktörü $h_N$ & 0.62 & 0.87 & 0.85\\
+Ort. ısıtma oranı & 0.016 & 0.000 & 0.053\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ayarlı Kurala Karşı Eşleştirilmiş Karşılaştırma}
+Aynı 20 test senaryosunda her senaryo için PPO ile ayarlı kuralın ödül farkı hesaplanmıştır. Ortalama fark $2.83\pm0.31$'dir ve PPO 20 senaryonun 20'sinde öndedir. Üstelik bu sonuç beş tohumun her biri için ayrı ayrı geçerlidir (tohum bazında ortalama farklar $3.39$, $3.73$, $2.81$, $1.80$ ve $2.44$); yani 100 eşleştirilmiş karşılaştırmanın 100'ünde PPO öndedir. Fark küçük ($\%2$) ancak gürültü değildir: senaryodan gelen ortak değişkenlik ($\pm3.5$) eşleştirmeyle elimine edildiğinde sistematik bir üstünlük kalmaktadır.
+
+Ayarlama sürecinin kendisi de öğreticidir. Sulama bandı ilk aramada sabit tutulduğunda (0.10), kural hedefini tarla kapasitesine koysa bile toprak suyunu yaklaşık $0.32$'de tutabilmiş ve 120 günün 77'sinde su stresi yaşamıştır. Bunun nedeni oransal kontrolcünün kalıcı hatasıdır~\cite{astrom2006}: sulama hedefe olan uzaklıkla orantılı olduğundan sistem, sulamanın evapotranspirasyona eşit olduğu, hedefin altındaki bir noktada dengeye oturur. Bant daraltıldığında (0.03) bu hata küçülmüş ve kural PPO'ya çok yaklaşmıştır. Ayrıca son ızgara araması $900\times10\times120\approx1.08$ milyon ortam adımı kullanmıştır; PPO daha iyi sonuca 500 bin adımda ve kural yapısını bilmeden ulaşmıştır.
+
+\subsection{Ödül Ayrıştırması: Fark Nereden Geliyor?}
+Tablo~\ref{tab:ayrisma}, $2.83$ puanlık farkı ödül bileşenlerine ayırmaktadır; bileşenlerin toplamı final değerlendirmedeki farkla birebir örtüşmektedir. Farkın yaklaşık \%88'i daha fazla büyümeden (günlük büyüme ödülü ve hasat bonusu), \%18'i gübre tasarrufundan gelmektedir; PPO bunun yaklaşık \%7'sini daha fazla su ve enerji kullanımıyla geri vermektedir. Büyüme farkının kaynağı Tablo~\ref{tab:davranis}'te görülmektedir: PPO toprak suyunu tarla kapasitesine biraz daha yakın tutmakta ($0.347$ ve $0.340$; su faktörü yaklaşık $0.99$ ve $0.96$) ve sıcaklığı iki gün daha fazla optimumda tutmaktadır; buna karşılık azot faktörü biraz daha düşüktür ($0.85$ ve $0.87$).
+
+\begin{table}[!t]
+\caption{Ödül ayrıştırması (20 test senaryosu ortalaması)}
+\label{tab:ayrisma}
+\centering
+\footnotesize
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Kalem & Ayarlı & PPO & Fark & Pay\\
+\midrule
+Günlük büyüme & 101.64 & 103.55 & $+1.91$ & \%68\\
+Hasat bonusu & 30.55 & 31.13 & $+0.57$ & \%20\\
+Gübre maliyeti & $-2.16$ & $-1.64$ & $+0.52$ & \%18\\
+Stres cezası & $-3.11$ & $-3.09$ & $+0.02$ & \%1\\
+Su ve enerji & $-0.57$ & $-0.77$ & $-0.20$ & $-$\%7\\
+\midrule
+Toplam & 126.35 & 129.18 & $+2.83$ & \%100\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.70\textwidth]{trajektori_karsilastirma.png}
+\caption{Aynı test senaryosunda (seed 2026) orijinal kural, ayarlı kural ve PPO'nun 120 günlük trajektorileri: iç sıcaklık, toprak suyu, biyokütle, toprak azotu, sulama ve iklim eylemleri.}
+\label{fig:traj}
+\end{figure*}
+
+\subsection{Gübrenin Sezona Göre Zamanlanması}
+Şekil~\ref{fig:traj}'deki azot panelinde iki politika da ilk 40 günde azotu yaklaşık 215\,kg/ha'ya çıkarmaktadır; bu noktadan sonra PPO gübreyi azaltmakta ve azot hasada doğru yaklaşık 140\,kg/ha'ya inmektedir, ayarlı kural ise 350\,kg/ha hedefine bakmaya devam ettiği için azotu sezon sonuna kadar artırmaktadır. Tek senaryodan çıkarılan bu gözlem 20 test senaryosunda ölçülerek doğrulanmıştır: PPO gübresinin yalnızca \%11'ini ($\pm2.6$, beş tohum) sezonun son üçte birinde verirken bu oran ayarlı kuralda \%26, orijinal kuralda \%43'tür. Sonuç olarak PPO \%24 daha az gübreyle daha fazla verim almaktadır. Sezon sonunda verilen gübre hasattan önce verime dönüşemediği için yalnızca maliyettir; kuralın gübre kararı sadece toprak azotuna baktığından bu zamanlamayı yapısal olarak yapamaz, PPO ise durumunda gün bilgisini ve gelişme aşamasını görür. Aynı şekilde orijinal kuralın havalandırmasının ilk 60 günde 0 ile 1 arasında salındığı, PPO'nun ve ayarlı kuralın havalandırmasının ise yumuşak biçimde yükseldiği görülmektedir.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.66\textwidth]{politika_sondaji.png}
+\caption{Politika sondajı: seed 2026 senaryosunun 84. günündeki gerçek durum alınmış, yalnızca iç sıcaklık ve LAI (biyokütleyle tutarlı olarak) değiştirilmiştir. Beş PPO ajanının önerdiği eylemler, ortalama $\pm$ std.}
+\label{fig:sondaj}
+\end{figure*}
+
+\subsection{Politika Sondajı}
+Şekil~\ref{fig:sondaj}'de PPO'nun önerdiği gübre hem iç sıcaklığa hem LAI'ye birlikte bağlıdır: 22\,$^{\circ}$C'de LAI arttıkça yaklaşık $0.59$'dan $0.72$'ye, 32\,$^{\circ}$C'de yaklaşık $0.33$'ten $0.42$'ye çıkmaktadır. Mekanizma ortamın formülünde vardır: 32\,$^{\circ}$C'de sıcaklık stres faktörü $f_T=(35-32)/9\approx0.33$ olduğundan bitki zaten yavaş büyür ve fazla azotun getirisi düşüktür. Havalandırma ise her koşulda neredeyse tam açıktır (yaklaşık $0.87$--$1.0$). Bu sondaj, çalışmanın ilk sürümündeki ölçülmemiş iki iddiayı da düzeltmiştir: \emph{yüksek LAI'de havalandırmanın belirgin biçimde azaltıldığı} iddiası ölçümle desteklenmemiş, \emph{PPO'nun proaktif olarak suladığı} iddiası ise sulama ile LAI arasındaki korelasyonun PPO'da ($0.79$) orijinal kuraldan ($0.98$) düşük çıkmasıyla çürütülmüştür. Sondaj tek bir taban duruma dayanır ve tohumlar arası bantlar geniştir; değerler grafikten yaklaşık olarak okunmuştur, kesin değerler ham logdadır.
+
+% ----------------------------------------------------------------------
+\section{Tartışma}
+\label{sec:tartisma}
+
+\subsection{PPO'nun Zayıf Noktaları}
+Trajektorinin son günlerinde iç sıcaklık $35\,^{\circ}$C'yi aştığında büyüme zaten durmaktadır ($f_T=0$); PPO bu bölgede küçük ve anlamsız bir ısıtma uygulamaktadır. Eylemin büyümeye etkisi olmadığı bir bölgede ajan ayrıştırılmış bir politika öğrenmemiştir ve enerji maliyetinin ($0.13$) kaynağı budur. İkincisi, entropi eğitim boyunca durmadan düşmekte ve keşif azalmaktadır. Üçüncüsü, PPO orijinal kurala göre $8.3\times$ gübre ve $2.1\times$ su kullanmaktadır; ödül fonksiyonu nitrat yıkanmasını cezalandırmadığı için ajan ödülün teşviklerine uymaktadır. Bu, klasik bir ödül istismarı değildir; ancak ödül fonksiyonu gerçek maliyetleri eksik fiyatlarsa ajanın o kaynağı fazla kullanacağını gösteren bir örnektir.
+
+\subsection{Sınırlamalar}
+Hava verisi sentetiktir ve sera modeli sadeleştirilmiştir; model gerçek ölçümlerle kalibre edilmemiştir. Ortamın en iyi politikası sabit eşiklerle iyi temsil edilebildiği için PÖ'nün avantajı küçük kalmaktadır. Rakip olarak yalnızca oransal kontrolcü kullanılmıştır; integral terimli bir PI kontrolcü kalıcı hatayı giderebilir ve kalan farkın bir kısmını kapatabilir. Hiperparametre taraması yakınsama öncesi 150 bin adımlık bir bütçeyle yapılmıştır. Hasat indeksi sabit kabul edilmiştir.
+
+% ----------------------------------------------------------------------
+\section{Sonuç ve Gelecek Çalışmalar}
+Bu çalışmada sıfırdan yazılmış bir sera simülatöründe sıfırdan yazılmış bir PPO ajanı eğitilmiş ve tüm sonuçlar ham loglardan üretilmiştir. PPO, kural yapısı bilgisi olmadan doğru çalışma noktasını bulmuştur: toprak suyunu tarla kapasitesine yakın tutmakta, azotu sezon başında yükseltmekte ve gübreyi sezon sonuna doğru kesmektedir. Orijinal kurala göre verimde $4.30\times$, adilce ayarlanmış kurala göre $1.02\times$ üstünlük sağlamış ve 100 eşleştirilmiş karşılaştırmanın 100'ünde önde olmuştur. Bu ortamda PÖ'nün avantajı küçüktür; çalışmanın asıl dersi, bir PÖ iddiasının adil kurulmuş bir rakiple ve ölçülmüş davranışlarla desteklenmesi gerektiği ve PÖ'nün değerinin, kararların zamanlamasının sonucu belirlediği problemlerde ortaya çıktığıdır.
+
+Gelecek çalışmalar şunlardır: (i) PI ve model öngörülü kontrol (MPC) ile karşılaştırma; (ii) gerçek meteoroloji verisiyle eğitim ve simülasyondan gerçeğe aktarım analizi; (iii) pozitif entropi katsayısı ve $\log\sigma$ alt sınırı; (iv) ödüle nitrat yıkanması cezası eklenmesi; (v) zamanlama kararlarının belirleyici olduğu ortamların, örneğin kapalı ortam mantar üretiminde meyvelenme tetikleme ve hasat zamanlamasının PÖ ile ele alınması.
+
+% ----------------------------------------------------------------------
+\begin{thebibliography}{99}
+
+\bibitem{sutton2018}
+R.~S. Sutton ve A.~G. Barto, \emph{Reinforcement Learning: An Introduction}, 2.~baskı. Cambridge, MA: MIT Press, 2018.
+
+\bibitem{schulman2017}
+J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford ve O.~Klimov, ``Proximal policy optimization algorithms,'' \emph{arXiv:1707.06347}, 2017.
+
+\bibitem{schulman2016}
+J.~Schulman, P.~Moritz, S.~Levine, M.~Jordan ve P.~Abbeel, ``High-dimensional continuous control using generalized advantage estimation,'' \emph{ICLR}, 2016.
+
+\bibitem{henderson2018}
+P.~Henderson, R.~Islam, P.~Bachman, J.~Pineau, D.~Precup ve D.~Meger, ``Deep reinforcement learning that matters,'' \emph{AAAI}, 2018.
+
+\bibitem{towers2024}
+M.~Towers vd., ``Gymnasium: A standard interface for reinforcement learning environments,'' \emph{arXiv:2407.17032}, 2024.
+
+\bibitem{vanthoor2011a}
+B.~H.~E. Vanthoor, C.~Stanghellini, E.~J. van~Henten ve P.~H.~B. de~Visser, ``A methodology for model-based greenhouse design: Part 1, a greenhouse climate model for a broad range of designs and climates,'' \emph{Biosystems Engineering}, c.~110, no.~4, ss.~363--377, 2011.
+
+\bibitem{vanthoor2011b}
+B.~H.~E. Vanthoor, P.~H.~B. de~Visser, C.~Stanghellini ve E.~J. van~Henten, ``A methodology for model-based greenhouse design: Part 2, description and validation of a tomato yield model,'' \emph{Biosystems Engineering}, c.~110, no.~4, ss.~378--395, 2011.
+
+\bibitem{kuijpers2021}
+W.~J.~P. Kuijpers, D.~J. Antunes, S.~Hemming, E.~J. van~Henten ve M.~J.~G. van~de~Molengraft, ``Fruit development modelling and performance analysis of automatic greenhouse control,'' \emph{Biosystems Engineering}, c.~208, ss.~300--318, 2021.
+
+\bibitem{monteith1977}
+J.~L. Monteith, ``Climate and the efficiency of crop production in Britain,'' \emph{Philosophical Transactions of the Royal Society of London B}, c.~281, ss.~277--294, 1977.
+
+\bibitem{hargreaves1985}
+G.~H. Hargreaves ve Z.~A. Samani, ``Reference crop evapotranspiration from temperature,'' \emph{Applied Engineering in Agriculture}, c.~1, no.~2, ss.~96--99, 1985.
+
+\bibitem{astrom2006}
+K.~J. Åström ve T.~Hägglund, \emph{Advanced PID Control}. Research Triangle Park, NC: ISA, 2006.
+
+\end{thebibliography}
+
+\end{document}
